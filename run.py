@@ -17,6 +17,68 @@ import studio as S   # noqa: E402
 
 TG_MAX = 48e6        # حد بوتات تيليجرام 50 ميجا
 
+import httpx  # noqa: E402
+
+TEXT_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-flash-latest", "gemini-2.0-flash-lite"]
+
+
+async def _gem_once(model: str, body: dict, tries=2) -> dict:
+    """محاولة سريعة لنموذج واحد؛ عند أي فشل نرمي خطأ لننتقل للنموذج التالي."""
+    last = ""
+    for a in range(tries):
+        try:
+            async with httpx.AsyncClient(timeout=90) as cl:
+                r = await cl.post(f"{S.GEM}/{model}:generateContent", json=body, headers={"x-goog-api-key": S._key()})
+            if r.status_code == 200:
+                d = r.json()
+                S._parts(d)  # يتأكد أن فيه نصاً فعلاً
+                return d
+            last = f"{r.status_code} {r.text[:150]}"
+            if r.status_code not in (429, 500, 502, 503, 504):
+                break
+        except Exception as e:  # noqa: BLE001
+            last = str(e)[:150]
+        await asyncio.sleep(4 + a * 4)
+    raise S.StudioErr(f"{model}: {last}")
+
+
+async def _pollinations(body: dict) -> dict:
+    """بديل مجاني أخير إن تعطلت كل نماذج Gemini."""
+    txt = "".join(p.get("text", "") for c in body.get("contents", []) for p in c.get("parts", []))
+    js = (body.get("generationConfig") or {}).get("responseMimeType") == "application/json"
+    if js:
+        txt += "\n\nReturn ONLY valid JSON, no markdown."
+    async with httpx.AsyncClient(timeout=180) as cl:
+        r = await cl.post("https://text.pollinations.ai/openai",
+                          json={"model": "openai", "messages": [{"role": "user", "content": txt}],
+                                **({"response_format": {"type": "json_object"}} if js else {})})
+    r.raise_for_status()
+    out = r.json()["choices"][0]["message"]["content"]
+    return {"candidates": [{"content": {"parts": [{"text": out}]}}]}
+
+
+async def _text_robust(body: dict) -> dict:
+    """يجرب نماذج Gemini المجانية واحداً بعد الآخر عند أي خطأ، ثم بديل Pollinations."""
+    errs = []
+    if S._key():
+        for rnd in range(2):
+            for m in dict.fromkeys([os.getenv("STUDIO_TEXT_MODEL", "").strip()] + TEXT_MODELS):
+                if not m:
+                    continue
+                try:
+                    return await _gem_once(m, body)
+                except Exception as e:  # noqa: BLE001
+                    errs.append(str(e)[:120])
+            await asyncio.sleep(20)
+    try:
+        return await _pollinations(body)
+    except Exception as e:  # noqa: BLE001
+        errs.append(f"pollinations: {str(e)[:120]}")
+    raise S.StudioErr("كل نماذج النصوص المجانية مشغولة الآن، أعد الطلب بعد قليل. " + " | ".join(errs[-3:]))
+
+
+F._text = _text_robust
+
 
 def params(d: dict) -> dict:
     """نفس قواعد الاستوديو: قيم آمنة وافتراضيات معقولة."""
