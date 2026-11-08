@@ -1,37 +1,18 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
+// بطلب المالك (8 نوفمبر 2026): هذا الموقع القديم توقف نهائياً.
+// كل زيارة تتحول فوراً إلى الموقع الرسمي nabdalsooq.com (تحويل دائم 301) مع الحفاظ على المسار.
+// الكود القديم محفوظ في سجل Git ويمكن استرجاعه عند الحاجة.
+const http = require('http');
 
-const authRoutes = require('./src/routes/auth');
-const pricesRoutes = require('./src/routes/prices');
-const analyzeRoutes = require('./src/routes/analyze');
-const meRoutes = require('./src/routes/me');
-const adminRoutes = require('./src/routes/admin');
-const subscribeRoutes = require('./src/routes/subscribe');
-const { ready } = require('./src/db');
-
-const app = express();
-app.use(cors());
-app.use(express.json({ limit: '50mb' })); // نسمح بحجم أكبر لأن صور الشارت تُرسَل base64
-app.use(express.static(require('path').join(__dirname, 'public')));
-app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
-
-app.use('/api/auth', authRoutes);
-app.use('/api/prices', pricesRoutes);
-app.use('/api/analyze', analyzeRoutes);
-app.use('/api/me', meRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/subscribe', subscribeRoutes);
-
+const MAIN = 'https://nabdalsooq.com';
 const PORT = process.env.PORT || 3000;
 
-ready
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`✅ السيرفر يعمل على http://localhost:${PORT}`);
-    });
-  })
-  .catch((err) => {
-    console.error('❌ فشل الاتصال بقاعدة بيانات Supabase:', err.message);
-    process.exit(1);
-  });
+http.createServer((req, res) => {
+  const url = req.url || '/';
+  // الواجهات البرمجية القديمة لا تُحوَّل (لا تعمل في الموقع الجديد بنفس الشكل): نرد بأن الخدمة انتقلت
+  if (url.startsWith('/api/')) {
+    res.writeHead(410, { 'Content-Type': 'application/json; charset=utf-8' });
+    return res.end(JSON.stringify({ error: 'moved', message: 'انتقل الموقع إلى nabdalsooq.com', url: MAIN }));
+  }
+  res.writeHead(301, { Location: MAIN + (url === '/' ? '/' : url), 'Cache-Control': 'public, max-age=86400' });
+  res.end();
+}).listen(PORT, () => console.log(`↪️ تحويل دائم إلى ${MAIN} على المنفذ ${PORT}`));
