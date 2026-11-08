@@ -1,0 +1,44 @@
+# بوت تيليجرام: يفحص الرسائل كل 5 دقائق تقريباً، ولا يجهّز شيئاً إن لم تصل رسالة (ثوانٍ معدودة).
+name: بوت الاستوديو
+on:
+  schedule: [{cron: "*/5 * * * *"}]
+  workflow_dispatch:
+concurrency: {group: studio, cancel-in-progress: false}
+jobs:
+  bot:
+    if: github.repository_owner != 'tareq890517-ux'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: هل وصلت رسالة؟
+        id: check
+        env: {TOKEN: "${{ secrets.BOT_TOKEN }}"}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "has=0" >> "$GITHUB_OUTPUT"; echo "::warning::BOT_TOKEN not set"; exit 0; fi
+          n=$(curl -s -m 20 "https://api.telegram.org/bot$TOKEN/getUpdates?timeout=0" | python3 -c "import sys,json;print(len(json.load(sys.stdin).get('result') or []))" 2>/dev/null || echo 0)
+          echo "has=$([ "${n:-0}" -gt 0 ] && echo 1 || echo 0)" >> "$GITHUB_OUTPUT"; echo "رسائل: $n"
+      - if: steps.check.outputs.has == '1'
+        uses: actions/checkout@v4
+      - if: steps.check.outputs.has == '1'
+        uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip}
+      - if: steps.check.outputs.has == '1'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg libraqm0 >/dev/null && pip install -q -r requirements.txt
+      - if: steps.check.outputs.has == '1'
+        name: صنع الفيديوهات المطلوبة
+        run: python bot.py
+        env:
+          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+          PEXELS_KEY: ${{ secrets.PEXELS_KEY }}
+          POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}
+          TELEGRAM_TOKEN: ${{ secrets.BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.CHAT_ID }}
+      - if: always() && steps.check.outputs.has == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: videos
+          path: |
+            out/*/episode.mp4
+            out/*/thumb.jpg
+          retention-days: 3
+          if-no-files-found: ignore

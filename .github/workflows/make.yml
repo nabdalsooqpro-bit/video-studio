@@ -1,0 +1,45 @@
+# صنع فيديو من نموذج GitHub: Actions → «اصنع فيديو» → Run workflow
+name: اصنع فيديو
+on:
+  workflow_dispatch:
+    inputs:
+      prompt: {description: "ماذا تريد في الفيديو؟ (الموضوع، الفكرة، النبرة، اللهجة)", required: true, type: string}
+      visual: {description: "المشاهد: ai = صور بالذكاء الاصطناعي · stock = مقاطع فيديو حقيقية", type: choice, options: [ai, stock], default: ai}
+      style: {description: "أسلوب الصور (اختياري): كرتون، أنمي، واقعي سينمائي…", type: string, default: ""}
+      minutes: {description: "المدة بالدقائق", type: choice, options: ["0.5", "1", "3", "5", "10"], default: "1"}
+      fmt: {description: "الشكل: wide = يوتيوب أفقي · tall = شورتس عمودي", type: choice, options: [wide, tall], default: wide}
+      voice: {description: "الصوت", type: choice, default: ar-SA-HamedNeural,
+              options: [ar-SA-HamedNeural, ar-SA-ZariyahNeural, ar-EG-ShakirNeural, ar-EG-SalmaNeural, ar-AE-HamdanNeural, ar-AE-FatimaNeural, en-US-GuyNeural, en-US-JennyNeural]}
+      subs: {description: "ترجمة مكتوبة على الشاشة", type: boolean, default: true}
+      music: {description: "موسيقى هادئة", type: boolean, default: true}
+concurrency: {group: studio, cancel-in-progress: false}
+jobs:
+  make:
+    if: github.repository_owner != 'tareq890517-ux'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip}
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg libraqm0 >/dev/null
+      - run: pip install -q -r requirements.txt
+      - name: صنع الفيديو
+        run: python run.py
+        env:
+          P_JSON: ${{ toJSON(inputs) }}
+          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+          PEXELS_KEY: ${{ secrets.PEXELS_KEY }}
+          POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}
+          TELEGRAM_TOKEN: ${{ secrets.BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.CHAT_ID }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: video
+          path: |
+            out/*/episode.mp4
+            out/*/thumb.jpg
+            out/*/episode.srt
+          retention-days: 3
+          if-no-files-found: ignore
